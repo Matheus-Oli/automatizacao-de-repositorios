@@ -64,18 +64,14 @@ jobs:
               name: repoName,
               gitRepository: {
                 type: 'github',
-                repo: repoFullName,
-                // Configurar para usar branch 'prd' como produção
-                productionBranch: 'prd'
+                repo: repoFullName
               },
               // Configurações fixas do Vite
               buildCommand: 'npm run build',
               outputDirectory: 'dist/spa/',
               installCommand: 'npm i --legacy-peer-deps',
               framework: 'vite',
-              publicSource: false, // Mantendo privado como seu script
-              // Configurações específicas da branch
-              gitBranch: 'prd'
+              publicSource: false // Mantendo privado como seu script
             };
             
             console.log('Criando projeto Vercel com config:', JSON.stringify(projectConfig, null, 2));
@@ -116,6 +112,8 @@ jobs:
         with:
           script: |
             const projectId = '${{ steps.vercel_deploy.outputs.vercel_project_id }}';
+            const repoName = '${{ steps.criar_repo.outputs.REPO_NAME }}';
+            const repoFullName = `${{ github.repository_owner }}/${repoName}`;
             
             // Configurar branch 'prd' como branch de produção
             const updateResponse = await fetch(`https://api.vercel.com/v9/projects/${projectId}`, {
@@ -128,17 +126,43 @@ jobs:
               body: JSON.stringify({
                 gitRepository: {
                   type: 'github',
-                  repo: `${{ github.repository_owner }}/${{ steps.criar_repo.outputs.REPO_NAME }}`,
+                  repo: repoFullName,
                   productionBranch: 'prd'
-                }
+                },
+                buildCommand: 'npm run build',
+                outputDirectory: 'dist/spa/',
+                installCommand: 'npm i --legacy-peer-deps',
+                framework: 'vite'
               })
             });
             
             if (updateResponse.ok) {
-              console.log('✅ Branch "prd" configurada como produção na Vercel');
+              const updatedProject = await updateResponse.json();
+              console.log('✅ Projeto atualizado com branch "prd" como produção');
+              console.log('✅ Configurações do Vite aplicadas');
             } else {
               const error = await updateResponse.text();
-              console.warn('⚠️ Não foi possível configurar branch de produção:', error);
+              console.warn('⚠️ Resposta da atualização:', error);
+              
+              // Tentar abordagem alternativa usando settings
+              const settingsResponse = await fetch(`https://api.vercel.com/v1/projects/${projectId}/settings`, {
+                method: 'PATCH',
+                headers: {
+                  'Authorization': `Bearer ${process.env.VERCEL_TOKEN}`,
+                  'Content-Type': 'application/json',
+                  ...(process.env.VERCEL_ORG_ID && { 'X-Vercel-Team-Id': process.env.VERCEL_ORG_ID })
+                },
+                body: JSON.stringify({
+                  productionBranch: 'prd'
+                })
+              });
+              
+              if (settingsResponse.ok) {
+                console.log('✅ Branch "prd" configurada como produção (método alternativo)');
+              } else {
+                console.warn('⚠️ Não foi possível configurar branch de produção automaticamente');
+                console.log('ℹ️ Você pode configurar manualmente na dashboard da Vercel');
+              }
             }
 
       - name: Configurar webhooks e proteções do repositório
