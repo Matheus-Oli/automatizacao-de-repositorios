@@ -1,4 +1,4 @@
-name: Criar Repositório Único
+name: Criar Repositório e Deploy Vercel
 
 on:
   workflow_dispatch:
@@ -10,9 +10,37 @@ on:
       empresa:
         description: 'Nome da empresa/projeto'
         required: true
+      framework:
+        description: 'Framework'
+        required: false
+        type: choice
+        options:
+          - 'nextjs'
+          - 'react'
+          - 'vue'
+          - 'nuxtjs'
+          - 'gatsby'
+          - 'svelte'
+          - 'vanilla'
+        default: 'react'
+      build_command:
+        description: 'Build Command'
+        required: false
+        type: string
+        default: 'npm run build'
+      output_directory:
+        description: 'Output Directory'
+        required: false
+        type: string
+        default: 'dist'
+      install_command:
+        description: 'Install Command'
+        required: false
+        type: string
+        default: 'npm install'
 
 jobs:
-  criar:
+  criar-e-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -34,10 +62,161 @@ jobs:
           echo "Listagem de arquivos:"
           ls -R
 
-      - name: Criar Repositório Único
+      - name: Criar Repositório
+        id: criar_repo
         working-directory: ${{ github.workspace }}
         run: |
           PREFIX="${{ github.event.inputs.tipo }}-${{ github.event.inputs.empresa }}"
+          echo "REPO_NAME=$PREFIX" >> $GITHUB_OUTPUT
           node scripts/criar-repos.js "$PREFIX" "${{ github.event.inputs.tipo }}"
         env:
           GHUB_TOKEN: ${{ secrets.GHUB_TOKEN }}
+
+      - name: Aguardar repositório ficar disponível
+        run: sleep 15
+
+      - name: Criar projeto na Vercel
+        id: vercel_deploy
+        uses: actions/github-script@v7
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+        with:
+          script: |
+            const repoName = '${{ steps.criar_repo.outputs.REPO_NAME }}';
+            const repoFullName = `${{ github.repository_owner }}/${repoName}`;
+            
+            // Configuração do projeto Vercel
+            const projectConfig = {
+              name: repoName,
+              gitRepository: {
+                type: 'github',
+                repo: repoFullName,
+                // Configurar para usar branch 'prd' como produção
+                productionBranch: 'prd'
+              },
+              buildCommand: '${{ github.event.inputs.build_command }}' || null,
+              outputDirectory: '${{ github.event.inputs.output_directory }}' || null,
+              installCommand: '${{ github.event.inputs.install_command }}' || null,
+              framework: '${{ github.event.inputs.framework }}' || null,
+              publicSource: false, // Mantendo privado como seu script
+              // Configurações específicas da branch
+              gitBranch: 'prd'
+            };
+            
+            console.log('Criando projeto Vercel com config:', JSON.stringify(projectConfig, null, 2));
+            
+            // Criar projeto na Vercel
+            const vercelResponse = await fetch('https://api.vercel.com/v9/projects', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${process.env.VERCEL_TOKEN}`,
+                'Content-Type': 'application/json',
+                ...(process.env.VERCEL_ORG_ID && { 'X-Vercel-Team-Id': process.env.VERCEL_ORG_ID })
+              },
+              body: JSON.stringify(projectConfig)
+            });
+            
+            if (!vercelResponse.ok) {
+              const error = await vercelResponse.text();
+              console.error('Resposta da Vercel:', error);
+              throw new Error(`Erro ao criar projeto Vercel (${vercelResponse.status}): ${error}`);
+            }
+            
+            const vercelProject = await vercelResponse.json();
+            
+            console.log(`✅ Projeto Vercel criado: ${vercelProject.name}`);
+            console.log(`🔗 URL do projeto: https://${repoName}.vercel.app`);
+            
+            core.setOutput('vercel_url', `https://${repoName}.vercel.app`);
+            core.setOutput('vercel_project_id', vercelProject.id);
+            core.setOutput('vercel_name', vercelProject.name);
+            
+            return vercelProject;
+
+      - name: Configurar branch de produção na Vercel
+        uses: actions/github-script@v7
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+        with:
+          script: |
+            const projectId = '${{ steps.vercel_deploy.outputs.vercel_project_id }}';
+            
+            // Configurar branch 'prd' como branch de produção
+            const updateResponse = await fetch(`https://api.vercel.com/v9/projects/${projectId}`, {
+              method: 'PATCH',
+              headers: {
+                'Authorization': `Bearer ${process.env.VERCEL_TOKEN}`,
+                'Content-Type': 'application/json',
+                ...(process.env.VERCEL_ORG_ID && { 'X-Vercel-Team-Id': process.env.VERCEL_ORG_ID })
+              },
+              body: JSON.stringify({
+                gitRepository: {
+                  type: 'github',
+                  repo: `${{ github.repository_owner }}/${{ steps.criar_repo.outputs.REPO_NAME }}`,
+                  productionBranch: 'prd'
+                }
+              })
+            });
+            
+            if (updateResponse.ok) {
+              console.log('✅ Branch "prd" configurada como produção na Vercel');
+            } else {
+              const error = await updateResponse.text();
+              console.warn('⚠️ Não foi possível configurar branch de produção:', error);
+            }
+
+      - name: Configurar webhooks e proteções do repositório
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GHUB_TOKEN }}
+          script: |
+            const repoName = '${{ steps.criar_repo.outputs.REPO_NAME }}';
+            
+            try {
+              // Configurar branch protection para prd (não para main)
+              await github.rest.repos.updateBranchProtection({
+                owner: context.repo.owner,
+                repo: repoName,
+                branch: 'prd',
+                required_status_checks: {
+                  strict: false,
+                  contexts: []
+                },
+                enforce_admins: false,
+                required_pull_request_reviews: null,
+                restrictions: null,
+                allow_force_pushes: true,
+                allow_deletions: false
+              });
+              
+              console.log('✅ Branch protection configurada para "prd"');
+            } catch (error) {
+              console.log('⚠️ Branch protection não configurada:', error.message);
+            }
+
+      - name: Criar resumo do projeto
+        run: |
+          echo "## 🚀 Projeto Criado com Sucesso!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 Detalhes do Projeto:" >> $GITHUB_STEP_SUMMARY
+          echo "- **Nome:** ${{ steps.criar_repo.outputs.REPO_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tipo:** ${{ github.event.inputs.tipo }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Empresa:** ${{ github.event.inputs.empresa }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Repositório:** [GitHub](https://github.com/${{ github.repository_owner }}/${{ steps.criar_repo.outputs.REPO_NAME }})" >> $GITHUB_STEP_SUMMARY
+          echo "- **Site Vercel:** [${{ steps.vercel_deploy.outputs.vercel_url }}](${{ steps.vercel_deploy.outputs.vercel_url }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ⚙️ Configurações Vercel:" >> $GITHUB_STEP_SUMMARY
+          echo "- **Framework:** ${{ github.event.inputs.framework }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Command:** ${{ github.event.inputs.build_command }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Output Directory:** ${{ github.event.inputs.output_directory }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Install Command:** ${{ github.event.inputs.install_command }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch de Produção:** prd" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📝 Próximos passos:" >> $GITHUB_STEP_SUMMARY
+          echo "1. 📁 Adicione seus arquivos no repositório" >> $GITHUB_STEP_SUMMARY
+          echo "2. 🔄 Faça commit e push para a branch **prd**" >> $GITHUB_STEP_SUMMARY
+          echo "3. 🚀 O deploy automático será disparado na Vercel" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ **Importante:** Deploy automático acontece apenas na branch **prd**, não na main!"
