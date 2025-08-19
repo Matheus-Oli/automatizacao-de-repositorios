@@ -4,14 +4,14 @@ const fs = require("fs");
 const path = require("path");
 
 const octokit = new Octokit({
-  auth: process.env.GHUB_TOKEN, // seu secret do GitHub
+  auth: process.env.GHUB_TOKEN, // secret do GitHub
 });
 
 async function run() {
   const [,, repoName, tipoProjeto] = process.argv;
 
   if (!repoName) {
-    console.error("❌ Uso: node criar-repos.js <repo_name>");
+    console.error("❌ Uso: node criar-repos.js <repo_name> <tipo_projeto>");
     process.exit(1);
   }
 
@@ -26,7 +26,7 @@ async function run() {
 
     console.log("✅ Repositório criado:", repo.data.html_url);
 
-    // Cria diretório temporário
+    // Diretório temporário
     const tmpDir = path.join(__dirname, "../temp_repo");
     fs.rmSync(tmpDir, { recursive: true, force: true });
     fs.mkdirSync(tmpDir);
@@ -38,7 +38,11 @@ async function run() {
     execSync("git config user.name 'github-actions[bot]'", { stdio: "inherit" });
     execSync("git config user.email 'github-actions[bot]@users.noreply.github.com'", { stdio: "inherit" });
 
-    execSync(`git remote add origin ${repo.data.clone_url}`, { stdio: "inherit" });
+    // Adiciona remote com token na URL
+    const token = process.env.GHUB_TOKEN;
+    const owner = repo.data.owner.login;
+    const repoUrl = `https://${token}@github.com/${owner}/${repoName}.git`;
+    execSync(`git remote add origin ${repoUrl}`, { stdio: "inherit" });
 
     // Função para criar branch a partir do template
     function criarBranch(branch, templateFolder) {
