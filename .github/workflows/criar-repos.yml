@@ -1,4 +1,4 @@
-name: Criar Repositórios HMG e PRD
+name: Criar Repositório Único
 
 on:
   workflow_dispatch:
@@ -27,10 +27,9 @@ jobs:
       - name: Instalar dependências
         run: npm install
 
-      - name: Criar Repositórios HMG e PRD
+      - name: Criar Repositório Único
         run: |
           PREFIX="${{ github.event.inputs.tipo }}-${{ github.event.inputs.empresa }}"
-          node scripts/criar-repos.js "$PREFIX-hmg" hmg
-          node scripts/criar-repos.js "$PREFIX-prd" prd
+          node scripts/criar-repos.js "$PREFIX" "${{ github.event.inputs.tipo }}"
         env:
           GHUB_TOKEN: ${{ secrets.GHUB_TOKEN }}
