@@ -1,0 +1,23 @@
+{
+  "name": "automatizacao-de-repositorios",
+  "version": "1.0.0",
+  "description": "Este repositório funciona como uma fábrica de projetos. Ele não é usado para código em produção, mas sim para centralizar automações. Cada vez que precisamos criar um projeto novo, rodamos um workflow nele, e o GitHub cria automaticamente os repositórios padronizados na nossa conta. Assim garantimos consistência, ganhamos tempo e evitamos erros manuais.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Matheus-Oli/automatizacao-de-repositorios.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Matheus-Oli/automatizacao-de-repositorios/issues"
+  },
+  "homepage": "https://github.com/Matheus-Oli/automatizacao-de-repositorios#readme",
+  "dependencies": {
+    "@octokit/rest": "^22.0.0"
+  }
+}
