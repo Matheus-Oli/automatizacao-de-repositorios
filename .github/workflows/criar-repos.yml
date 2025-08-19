@@ -1,0 +1,36 @@
+name: Criar Repositórios HMG e PRD
+
+on:
+  workflow_dispatch:
+    inputs:
+      tipo:
+        description: 'Tipo do projeto (site ou lp)'
+        required: true
+        default: 'site'
+      empresa:
+        description: 'Nome da empresa/projeto'
+        required: true
+
+jobs:
+  criar:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependências
+        run: npm install
+
+      - name: Criar Repositórios HMG e PRD
+        run: |
+          PREFIX="${{ github.event.inputs.tipo }}-${{ github.event.inputs.empresa }}"
+          node scripts/criar-repos.js "$PREFIX-hmg" hmg
+          node scripts/criar-repos.js "$PREFIX-prd" prd
+        env:
+          GHUB_TOKEN: ${{ secrets.GHUB_TOKEN }}
