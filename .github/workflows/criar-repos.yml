@@ -27,7 +27,15 @@ jobs:
       - name: Instalar dependências
         run: npm install
 
+      - name: Verificar arquivos
+        run: |
+          echo "Diretório atual:"
+          pwd
+          echo "Listagem de arquivos:"
+          ls -R
+
       - name: Criar Repositório Único
+        working-directory: ${{ github.workspace }}
         run: |
           PREFIX="${{ github.event.inputs.tipo }}-${{ github.event.inputs.empresa }}"
           node scripts/criar-repos.js "$PREFIX" "${{ github.event.inputs.tipo }}"
