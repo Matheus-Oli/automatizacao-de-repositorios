@@ -30,6 +30,6 @@ jobs:
       - name: Criar Repositório e Branches
         run: |
           PREFIX="${{ github.event.inputs.tipo }}-${{ github.event.inputs.empresa }}"
-          node scripts/criar-repos.js "$PREFIX"
+          node scripts/criar-repos.js "$PREFIX" "${{ github.event.inputs.tipo }}"
         env:
           GHUB_TOKEN: ${{ secrets.GHUB_TOKEN }}

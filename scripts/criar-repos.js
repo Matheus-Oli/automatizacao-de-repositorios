@@ -4,11 +4,11 @@ const fs = require("fs");
 const path = require("path");
 
 const octokit = new Octokit({
-  auth: process.env.GHUB_TOKEN,
+  auth: process.env.GHUB_TOKEN, // seu secret do GitHub
 });
 
 async function run() {
-  const [,, repoName] = process.argv;
+  const [,, repoName, tipoProjeto] = process.argv;
 
   if (!repoName) {
     console.error("❌ Uso: node criar-repos.js <repo_name>");
@@ -16,35 +16,43 @@ async function run() {
   }
 
   try {
+    // Cria repositório vazio sem main
     const repo = await octokit.rest.repos.createForAuthenticatedUser({
       name: repoName,
       private: true,
-      description: `Repositório automático 🚀`,
-      auto_init: false // sem main
+      description: `Repositório automático (${tipoProjeto || "site/lp"}) 🚀`,
+      auto_init: false
     });
 
     console.log("✅ Repositório criado:", repo.data.html_url);
 
+    // Cria diretório temporário
     const tmpDir = path.join(__dirname, "../temp_repo");
     fs.rmSync(tmpDir, { recursive: true, force: true });
     fs.mkdirSync(tmpDir);
     process.chdir(tmpDir);
 
     execSync("git init", { stdio: "inherit" });
+
+    // Configura usuário Git
+    execSync("git config user.name 'github-actions[bot]'", { stdio: "inherit" });
+    execSync("git config user.email 'github-actions[bot]@users.noreply.github.com'", { stdio: "inherit" });
+
     execSync(`git remote add origin ${repo.data.clone_url}`, { stdio: "inherit" });
 
+    // Função para criar branch a partir do template
     function criarBranch(branch, templateFolder) {
       const templatePath = path.join(__dirname, `../templates/${templateFolder}`);
 
-      // Se não existir template, cria pasta temporária
+      // Se não existir template, cria pasta
       if (!fs.existsSync(templatePath)) {
         fs.mkdirSync(templatePath, { recursive: true });
       }
 
-      // Se estiver vazia, cria um README.md para forçar a branch
-      const files = fs.readdirSync(templatePath);
+      // Se template estiver vazio, cria README.md
+      const files = fs.existsSync(templatePath) ? fs.readdirSync(templatePath) : [];
       if (files.length === 0) {
-        fs.writeFileSync(path.join(templatePath, "README.md"), `# ${branch.toUpperCase()} - branch inicial`);
+        fs.writeFileSync(path.join(templatePath, "README.md"), `# ${branch.toUpperCase()} - branch inicial (${tipoProjeto || "site/lp"})`);
       }
 
       // Copia arquivos do template
@@ -55,6 +63,7 @@ async function run() {
       execSync(`git push -u origin ${branch}`, { stdio: "inherit" });
     }
 
+    // Cria branches hmg e prd
     criarBranch("hmg", "hmg");
     criarBranch("prd", "prd");
 
