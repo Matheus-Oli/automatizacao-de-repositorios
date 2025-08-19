@@ -10,6 +10,21 @@ on:
       empresa:
         description: 'Nome da empresa/projeto'
         required: true
+      nome_vercel:
+        description: 'Nome do projeto na Vercel (define o domínio)'
+        required: true
+      build_command:
+        description: 'Comando de build'
+        required: false
+        default: ''
+      output_directory:
+        description: 'Diretório de output'
+        required: false
+        default: ''
+      install_command:
+        description: 'Comando de instalação'
+        required: false
+        default: ''
       framework:
         description: 'Framework do projeto'
         required: true
@@ -48,38 +63,56 @@ jobs:
       - name: Definir configurações do framework
         id: framework_config
         run: |
+          # Primeiro define os defaults baseados no framework
           case "${{ github.event.inputs.framework }}" in
             "vite")
-              echo "BUILD_COMMAND=npm run build" >> $GITHUB_OUTPUT
-              echo "OUTPUT_DIRECTORY=dist/spa/" >> $GITHUB_OUTPUT
-              echo "INSTALL_COMMAND=npm i --legacy-peer-deps" >> $GITHUB_OUTPUT
-              echo "FRAMEWORK=vite" >> $GITHUB_OUTPUT
+              DEFAULT_BUILD="npm run build"
+              DEFAULT_OUTPUT="dist/spa/"
+              DEFAULT_INSTALL="npm i --legacy-peer-deps"
+              FRAMEWORK_NAME="vite"
               ;;
             "angular")
-              echo "BUILD_COMMAND=npm run build" >> $GITHUB_OUTPUT
-              echo "OUTPUT_DIRECTORY=dist/" >> $GITHUB_OUTPUT
-              echo "INSTALL_COMMAND=npm ci" >> $GITHUB_OUTPUT
-              echo "FRAMEWORK=angular" >> $GITHUB_OUTPUT
+              DEFAULT_BUILD="npm run build"
+              DEFAULT_OUTPUT="dist/"
+              DEFAULT_INSTALL="npm ci"
+              FRAMEWORK_NAME="angular"
               ;;
             "react")
-              echo "BUILD_COMMAND=npm run build" >> $GITHUB_OUTPUT
-              echo "OUTPUT_DIRECTORY=build/" >> $GITHUB_OUTPUT
-              echo "INSTALL_COMMAND=npm ci" >> $GITHUB_OUTPUT
-              echo "FRAMEWORK=create-react-app" >> $GITHUB_OUTPUT
+              DEFAULT_BUILD="npm run build"
+              DEFAULT_OUTPUT="build/"
+              DEFAULT_INSTALL="npm ci"
+              FRAMEWORK_NAME="create-react-app"
               ;;
             "nextjs")
-              echo "BUILD_COMMAND=npm run build" >> $GITHUB_OUTPUT
-              echo "OUTPUT_DIRECTORY=" >> $GITHUB_OUTPUT
-              echo "INSTALL_COMMAND=npm ci" >> $GITHUB_OUTPUT
-              echo "FRAMEWORK=nextjs" >> $GITHUB_OUTPUT
+              DEFAULT_BUILD="npm run build"
+              DEFAULT_OUTPUT=""
+              DEFAULT_INSTALL="npm ci"
+              FRAMEWORK_NAME="nextjs"
               ;;
             "other")
-              echo "BUILD_COMMAND=npm run build" >> $GITHUB_OUTPUT
-              echo "OUTPUT_DIRECTORY=dist/" >> $GITHUB_OUTPUT
-              echo "INSTALL_COMMAND=npm ci" >> $GITHUB_OUTPUT
-              echo "FRAMEWORK=vite" >> $GITHUB_OUTPUT
+              DEFAULT_BUILD="npm run build"
+              DEFAULT_OUTPUT="dist/"
+              DEFAULT_INSTALL="npm ci"
+              FRAMEWORK_NAME="vite"
               ;;
           esac
+          
+          # Usa o input customizado se fornecido, senão usa o default
+          BUILD_CMD="${{ github.event.inputs.build_command }}"
+          OUTPUT_DIR="${{ github.event.inputs.output_directory }}"
+          INSTALL_CMD="${{ github.event.inputs.install_command }}"
+          
+          echo "BUILD_COMMAND=${BUILD_CMD:-$DEFAULT_BUILD}" >> $GITHUB_OUTPUT
+          echo "OUTPUT_DIRECTORY=${OUTPUT_DIR:-$DEFAULT_OUTPUT}" >> $GITHUB_OUTPUT
+          echo "INSTALL_COMMAND=${INSTALL_CMD:-$DEFAULT_INSTALL}" >> $GITHUB_OUTPUT
+          echo "FRAMEWORK=$FRAMEWORK_NAME" >> $GITHUB_OUTPUT
+          
+          # Log das configurações finais
+          echo "📦 Configurações finais:"
+          echo "   Build Command: ${BUILD_CMD:-$DEFAULT_BUILD}"
+          echo "   Output Directory: ${OUTPUT_DIR:-$DEFAULT_OUTPUT}"
+          echo "   Install Command: ${INSTALL_CMD:-$DEFAULT_INSTALL}"
+          echo "   Framework: $FRAMEWORK_NAME"
 
       - name: Criar Repositório
         id: criar_repo
@@ -103,6 +136,7 @@ jobs:
         with:
           script: |
             const repoName = '${{ steps.criar_repo.outputs.REPO_NAME }}';
+            const vercelProjectName = '${{ github.event.inputs.nome_vercel }}';
             const repoFullName = `${{ github.repository_owner }}/${repoName}`;
             
             // Configurações dinâmicas baseadas no framework escolhido
@@ -112,7 +146,7 @@ jobs:
             const framework = '${{ steps.framework_config.outputs.FRAMEWORK }}';
             
             const projectConfig = {
-              name: repoName,
+              name: vercelProjectName,
               gitRepository: {
                 type: 'github',
                 repo: repoFullName
@@ -150,9 +184,9 @@ jobs:
             const vercelProject = await vercelResponse.json();
             
             console.log(`✅ Projeto Vercel criado: ${vercelProject.name}`);
-            console.log(`🔗 URL do projeto: https://${repoName}.vercel.app`);
+            console.log(`🔗 URL do projeto: https://${vercelProjectName}.vercel.app`);
             
-            core.setOutput('vercel_url', `https://${repoName}.vercel.app`);
+            core.setOutput('vercel_url', `https://${vercelProjectName}.vercel.app`);
             core.setOutput('vercel_project_id', vercelProject.id);
             core.setOutput('vercel_name', vercelProject.name);
             
@@ -267,6 +301,7 @@ jobs:
           echo "- **Nome:** ${{ steps.criar_repo.outputs.REPO_NAME }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Tipo:** ${{ github.event.inputs.tipo }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Empresa:** ${{ github.event.inputs.empresa }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Nome Vercel:** ${{ github.event.inputs.nome_vercel }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Framework:** ${{ github.event.inputs.framework }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Repositório:** [GitHub](https://github.com/${{ github.repository_owner }}/${{ steps.criar_repo.outputs.REPO_NAME }})" >> $GITHUB_STEP_SUMMARY
           echo "- **Site Vercel:** [${{ steps.vercel_deploy.outputs.vercel_url }}](${{ steps.vercel_deploy.outputs.vercel_url }})" >> $GITHUB_STEP_SUMMARY
@@ -277,6 +312,23 @@ jobs:
           echo "- **Output Directory:** ${{ steps.framework_config.outputs.OUTPUT_DIRECTORY }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Install Command:** ${{ steps.framework_config.outputs.INSTALL_COMMAND }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch de Produção:** prd" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔧 Comandos Personalizados:" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ github.event.inputs.build_command }}" ]; then
+            echo "- ✅ Build customizado: \`${{ github.event.inputs.build_command }}\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- 📋 Build padrão usado" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -n "${{ github.event.inputs.output_directory }}" ]; then
+            echo "- ✅ Output customizado: \`${{ github.event.inputs.output_directory }}\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- 📋 Output padrão usado" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -n "${{ github.event.inputs.install_command }}" ]; then
+            echo "- ✅ Install customizado: \`${{ github.event.inputs.install_command }}\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- 📋 Install padrão usado" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📝 Próximos passos:" >> $GITHUB_STEP_SUMMARY
           echo "1. 📁 Adicione seus arquivos no repositório" >> $GITHUB_STEP_SUMMARY
