@@ -10,34 +10,7 @@ on:
       empresa:
         description: 'Nome da empresa/projeto'
         required: true
-      framework:
-        description: 'Framework'
-        required: false
-        type: choice
-        options:
-          - 'nextjs'
-          - 'react'
-          - 'vue'
-          - 'nuxtjs'
-          - 'gatsby'
-          - 'svelte'
-          - 'vanilla'
-        default: 'react'
-      build_command:
-        description: 'Build Command'
-        required: false
-        type: string
-        default: 'npm run build'
-      output_directory:
-        description: 'Output Directory'
-        required: false
-        type: string
-        default: 'dist'
-      install_command:
-        description: 'Install Command'
-        required: false
-        type: string
-        default: 'npm install'
+
 
 jobs:
   criar-e-deploy:
@@ -86,7 +59,7 @@ jobs:
             const repoName = '${{ steps.criar_repo.outputs.REPO_NAME }}';
             const repoFullName = `${{ github.repository_owner }}/${repoName}`;
             
-            // Configuração do projeto Vercel
+            // Configuração do projeto Vercel (sempre com Vite)
             const projectConfig = {
               name: repoName,
               gitRepository: {
@@ -95,10 +68,11 @@ jobs:
                 // Configurar para usar branch 'prd' como produção
                 productionBranch: 'prd'
               },
-              buildCommand: '${{ github.event.inputs.build_command }}' || null,
-              outputDirectory: '${{ github.event.inputs.output_directory }}' || null,
-              installCommand: '${{ github.event.inputs.install_command }}' || null,
-              framework: '${{ github.event.inputs.framework }}' || null,
+              // Configurações fixas do Vite
+              buildCommand: 'npm run build',
+              outputDirectory: 'dist/spa/',
+              installCommand: 'npm i --legacy-peer-deps',
+              framework: 'vite',
               publicSource: false, // Mantendo privado como seu script
               // Configurações específicas da branch
               gitBranch: 'prd'
@@ -207,11 +181,11 @@ jobs:
           echo "- **Repositório:** [GitHub](https://github.com/${{ github.repository_owner }}/${{ steps.criar_repo.outputs.REPO_NAME }})" >> $GITHUB_STEP_SUMMARY
           echo "- **Site Vercel:** [${{ steps.vercel_deploy.outputs.vercel_url }}](${{ steps.vercel_deploy.outputs.vercel_url }})" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### ⚙️ Configurações Vercel:" >> $GITHUB_STEP_SUMMARY
-          echo "- **Framework:** ${{ github.event.inputs.framework }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Build Command:** ${{ github.event.inputs.build_command }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Output Directory:** ${{ github.event.inputs.output_directory }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Install Command:** ${{ github.event.inputs.install_command }}" >> $GITHUB_STEP_SUMMARY
+          echo "### ⚙️ Configurações Vercel (Vite):" >> $GITHUB_STEP_SUMMARY
+          echo "- **Framework:** Vite" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Command:** npm run build" >> $GITHUB_STEP_SUMMARY
+          echo "- **Output Directory:** dist/spa/" >> $GITHUB_STEP_SUMMARY
+          echo "- **Install Command:** npm i --legacy-peer-deps" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch de Produção:** prd" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📝 Próximos passos:" >> $GITHUB_STEP_SUMMARY
