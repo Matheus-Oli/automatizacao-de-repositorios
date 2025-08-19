@@ -10,7 +10,17 @@ on:
       empresa:
         description: 'Nome da empresa/projeto'
         required: true
-
+      framework:
+        description: 'Framework do projeto'
+        required: true
+        type: choice
+        default: 'vite'
+        options:
+          - vite
+          - angular
+          - react
+          - nextjs
+          - other
 
 jobs:
   criar-e-deploy:
@@ -34,6 +44,42 @@ jobs:
           pwd
           echo "Listagem de arquivos:"
           ls -R
+
+      - name: Definir configurações do framework
+        id: framework_config
+        run: |
+          case "${{ github.event.inputs.framework }}" in
+            "vite")
+              echo "BUILD_COMMAND=npm run build" >> $GITHUB_OUTPUT
+              echo "OUTPUT_DIRECTORY=dist/spa/" >> $GITHUB_OUTPUT
+              echo "INSTALL_COMMAND=npm i --legacy-peer-deps" >> $GITHUB_OUTPUT
+              echo "FRAMEWORK=vite" >> $GITHUB_OUTPUT
+              ;;
+            "angular")
+              echo "BUILD_COMMAND=npm run build" >> $GITHUB_OUTPUT
+              echo "OUTPUT_DIRECTORY=dist/" >> $GITHUB_OUTPUT
+              echo "INSTALL_COMMAND=npm ci" >> $GITHUB_OUTPUT
+              echo "FRAMEWORK=angular" >> $GITHUB_OUTPUT
+              ;;
+            "react")
+              echo "BUILD_COMMAND=npm run build" >> $GITHUB_OUTPUT
+              echo "OUTPUT_DIRECTORY=build/" >> $GITHUB_OUTPUT
+              echo "INSTALL_COMMAND=npm ci" >> $GITHUB_OUTPUT
+              echo "FRAMEWORK=create-react-app" >> $GITHUB_OUTPUT
+              ;;
+            "nextjs")
+              echo "BUILD_COMMAND=npm run build" >> $GITHUB_OUTPUT
+              echo "OUTPUT_DIRECTORY=" >> $GITHUB_OUTPUT
+              echo "INSTALL_COMMAND=npm ci" >> $GITHUB_OUTPUT
+              echo "FRAMEWORK=nextjs" >> $GITHUB_OUTPUT
+              ;;
+            "other")
+              echo "BUILD_COMMAND=npm run build" >> $GITHUB_OUTPUT
+              echo "OUTPUT_DIRECTORY=dist/" >> $GITHUB_OUTPUT
+              echo "INSTALL_COMMAND=npm ci" >> $GITHUB_OUTPUT
+              echo "FRAMEWORK=vite" >> $GITHUB_OUTPUT
+              ;;
+          esac
 
       - name: Criar Repositório
         id: criar_repo
@@ -59,20 +105,28 @@ jobs:
             const repoName = '${{ steps.criar_repo.outputs.REPO_NAME }}';
             const repoFullName = `${{ github.repository_owner }}/${repoName}`;
             
-            // Configuração do projeto Vercel (sempre com Vite)
+            // Configurações dinâmicas baseadas no framework escolhido
+            const buildCommand = '${{ steps.framework_config.outputs.BUILD_COMMAND }}';
+            const outputDirectory = '${{ steps.framework_config.outputs.OUTPUT_DIRECTORY }}';
+            const installCommand = '${{ steps.framework_config.outputs.INSTALL_COMMAND }}';
+            const framework = '${{ steps.framework_config.outputs.FRAMEWORK }}';
+            
             const projectConfig = {
               name: repoName,
               gitRepository: {
                 type: 'github',
                 repo: repoFullName
               },
-              // Configurações fixas do Vite
-              buildCommand: 'npm run build',
-              outputDirectory: 'dist/spa/',
-              installCommand: 'npm i --legacy-peer-deps',
-              framework: 'vite',
-              publicSource: false // Mantendo privado como seu script
+              buildCommand: buildCommand,
+              installCommand: installCommand,
+              framework: framework,
+              publicSource: false
             };
+            
+            // Só adiciona outputDirectory se não estiver vazio (Next.js não precisa)
+            if (outputDirectory) {
+              projectConfig.outputDirectory = outputDirectory;
+            }
             
             console.log('Criando projeto Vercel com config:', JSON.stringify(projectConfig, null, 2));
             
@@ -115,6 +169,27 @@ jobs:
             const repoName = '${{ steps.criar_repo.outputs.REPO_NAME }}';
             const repoFullName = `${{ github.repository_owner }}/${repoName}`;
             
+            const buildCommand = '${{ steps.framework_config.outputs.BUILD_COMMAND }}';
+            const outputDirectory = '${{ steps.framework_config.outputs.OUTPUT_DIRECTORY }}';
+            const installCommand = '${{ steps.framework_config.outputs.INSTALL_COMMAND }}';
+            const framework = '${{ steps.framework_config.outputs.FRAMEWORK }}';
+            
+            const updateConfig = {
+              gitRepository: {
+                type: 'github',
+                repo: repoFullName,
+                productionBranch: 'prd'
+              },
+              buildCommand: buildCommand,
+              installCommand: installCommand,
+              framework: framework
+            };
+            
+            // Só adiciona outputDirectory se não estiver vazio
+            if (outputDirectory) {
+              updateConfig.outputDirectory = outputDirectory;
+            }
+            
             // Configurar branch 'prd' como branch de produção
             const updateResponse = await fetch(`https://api.vercel.com/v9/projects/${projectId}`, {
               method: 'PATCH',
@@ -123,23 +198,13 @@ jobs:
                 'Content-Type': 'application/json',
                 ...(process.env.VERCEL_ORG_ID && { 'X-Vercel-Team-Id': process.env.VERCEL_ORG_ID })
               },
-              body: JSON.stringify({
-                gitRepository: {
-                  type: 'github',
-                  repo: repoFullName,
-                  productionBranch: 'prd'
-                },
-                buildCommand: 'npm run build',
-                outputDirectory: 'dist/spa/',
-                installCommand: 'npm i --legacy-peer-deps',
-                framework: 'vite'
-              })
+              body: JSON.stringify(updateConfig)
             });
             
             if (updateResponse.ok) {
               const updatedProject = await updateResponse.json();
               console.log('✅ Projeto atualizado com branch "prd" como produção');
-              console.log('✅ Configurações do Vite aplicadas');
+              console.log(`✅ Configurações do ${framework.toUpperCase()} aplicadas`);
             } else {
               const error = await updateResponse.text();
               console.warn('⚠️ Resposta da atualização:', error);
@@ -202,14 +267,15 @@ jobs:
           echo "- **Nome:** ${{ steps.criar_repo.outputs.REPO_NAME }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Tipo:** ${{ github.event.inputs.tipo }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Empresa:** ${{ github.event.inputs.empresa }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Framework:** ${{ github.event.inputs.framework }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Repositório:** [GitHub](https://github.com/${{ github.repository_owner }}/${{ steps.criar_repo.outputs.REPO_NAME }})" >> $GITHUB_STEP_SUMMARY
           echo "- **Site Vercel:** [${{ steps.vercel_deploy.outputs.vercel_url }}](${{ steps.vercel_deploy.outputs.vercel_url }})" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### ⚙️ Configurações Vercel (Vite):" >> $GITHUB_STEP_SUMMARY
-          echo "- **Framework:** Vite" >> $GITHUB_STEP_SUMMARY
-          echo "- **Build Command:** npm run build" >> $GITHUB_STEP_SUMMARY
-          echo "- **Output Directory:** dist/spa/" >> $GITHUB_STEP_SUMMARY
-          echo "- **Install Command:** npm i --legacy-peer-deps" >> $GITHUB_STEP_SUMMARY
+          echo "### ⚙️ Configurações Vercel:" >> $GITHUB_STEP_SUMMARY
+          echo "- **Framework:** ${{ steps.framework_config.outputs.FRAMEWORK }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Command:** ${{ steps.framework_config.outputs.BUILD_COMMAND }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Output Directory:** ${{ steps.framework_config.outputs.OUTPUT_DIRECTORY }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Install Command:** ${{ steps.framework_config.outputs.INSTALL_COMMAND }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch de Produção:** prd" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📝 Próximos passos:" >> $GITHUB_STEP_SUMMARY
