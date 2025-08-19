@@ -16,7 +16,6 @@ async function run() {
   }
 
   try {
-    // Cria repositório vazio
     const repo = await octokit.rest.repos.createForAuthenticatedUser({
       name: repoName,
       private: true,
@@ -34,14 +33,21 @@ async function run() {
     execSync("git init", { stdio: "inherit" });
     execSync(`git remote add origin ${repo.data.clone_url}`, { stdio: "inherit" });
 
-    // Função para criar branch a partir do template
     function criarBranch(branch, templateFolder) {
       const templatePath = path.join(__dirname, `../templates/${templateFolder}`);
+
+      // Se não existir template, cria pasta temporária
       if (!fs.existsSync(templatePath)) {
-        console.log(`⚠️ Template ${templateFolder} não encontrado.`);
-        return;
+        fs.mkdirSync(templatePath, { recursive: true });
       }
 
+      // Se estiver vazia, cria um README.md para forçar a branch
+      const files = fs.readdirSync(templatePath);
+      if (files.length === 0) {
+        fs.writeFileSync(path.join(templatePath, "README.md"), `# ${branch.toUpperCase()} - branch inicial`);
+      }
+
+      // Copia arquivos do template
       execSync(`git checkout -b ${branch}`, { stdio: "inherit" });
       execSync(`cp -r ${templatePath}/. .`, { stdio: "inherit" });
       execSync("git add .", { stdio: "inherit" });
@@ -52,7 +58,7 @@ async function run() {
     criarBranch("hmg", "hmg");
     criarBranch("prd", "prd");
 
-    console.log("✅ Branches hmg e prd criadas no repositório sem main!");
+    console.log("✅ Branches hmg e prd criadas com README.md inicial!");
   } catch (error) {
     console.error("❌ Erro:", error);
     process.exit(1);
