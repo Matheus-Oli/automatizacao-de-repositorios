@@ -1,4 +1,4 @@
-name: Criar Repositório com Branches
+name: Criar Repositório com Branch HMG
 
 on:
   workflow_dispatch:
@@ -27,7 +27,7 @@ jobs:
       - name: Instalar dependências
         run: npm install
 
-      - name: Criar Repositório e Branches
+      - name: Criar Repositório e Branch HMG
         run: |
           PREFIX="${{ github.event.inputs.tipo }}-${{ github.event.inputs.empresa }}"
           node scripts/criar-repos.js "$PREFIX" "${{ github.event.inputs.tipo }}"
