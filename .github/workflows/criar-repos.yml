@@ -1,4 +1,4 @@
-name: Criar Repositório com Branch HMG
+name: Criar Repositório Único
 
 on:
   workflow_dispatch:
@@ -16,18 +16,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Instalar dependências
-        run: npm install
-
-      - name: Criar Repositório e Branch HMG
+      - name: Criar Repositório
         run: |
           PREFIX="${{ github.event.inputs.tipo }}-${{ github.event.inputs.empresa }}"
           node scripts/criar-repos.js "$PREFIX" "${{ github.event.inputs.tipo }}"
